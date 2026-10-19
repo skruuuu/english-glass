@@ -1,0 +1,24 @@
+name: Hosted build
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  hosted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - run: unzip -q sites-source.zip -d hosted
+      - run: pnpm install --frozen-lockfile
+        working-directory: hosted
+      - run: pnpm test
+        working-directory: hosted
+      - run: pnpm typecheck
+        working-directory: hosted
+      - run: pnpm build
+        working-directory: hosted
