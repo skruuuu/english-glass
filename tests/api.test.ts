@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import app from '../worker/app.ts';
+const env={} as any;
+test('health is public',async()=>{const r=await app.request('https://example.com/api/health',{},env);assert.equal(r.status,200);assert.equal((await r.json() as any).ok,true)});
+for(const path of ['/api/me','/api/history'])test(`${path} requires session`,async()=>{const r=await app.request('https://example.com'+path,{},env);assert.equal(r.status,401);assert.equal(r.headers.get('cache-control'),'no-store')});
+test('cross-origin mutations blocked',async()=>assert.equal((await app.request('https://example.com/api/feedback',{method:'POST',headers:{Origin:'https://evil.com'}},env)).status,403));
+test('missing OAuth setup returns honest error',async()=>assert.equal((await app.request('https://example.com/auth/google',{},env)).status,503));
+test('OAuth rejects forged state',async()=>assert.equal((await app.request('https://example.com/auth/callback?code=forged&state=forged',{},env)).status,400));
+const db={prepare:()=>({bind:()=>({first:async()=>({user_id:'test-user',n:0}),run:async()=>({success:true})})})};
+test('authenticated malformed answer rejected',async()=>assert.equal((await app.request('https://example.com/api/feedback',{method:'POST',headers:{Origin:'https://example.com',Cookie:'session=test','Content-Type':'application/json'},body:JSON.stringify({skill:'Writing',answer:'a'.repeat(2001)})},{DB:db} as any)).status,400));
+test('AI outage preserves result and reports unavailable feedback',async()=>{const r=await app.request('https://example.com/api/feedback',{method:'POST',headers:{Origin:'https://example.com',Cookie:'session=test','Content-Type':'application/json'},body:JSON.stringify({skill:'Writing',answer:'I drink coffee every morning.'})},{DB:db} as any);assert.equal(r.status,200);const body=await r.json() as any;assert.equal(body.correct,true);assert.equal(body.feedback,null);assert.match(body.warning,/unavailable/)});
